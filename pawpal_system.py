@@ -1,3 +1,4 @@
+import calendar
 import uuid
 from datetime import date, time, timedelta
 from typing import Dict, List, Optional
@@ -79,7 +80,9 @@ class Action:
         if freq == "weekly":
             return delta % 7 == 0
         if freq == "monthly":
-            return targetDate.day == self.startDate.day
+            last_day = calendar.monthrange(targetDate.year, targetDate.month)[1]
+            due_day = min(self.startDate.day, last_day)
+            return targetDate.day == due_day
         if freq == "one-time":
             return targetDate == self.startDate
         return False
@@ -427,7 +430,7 @@ class User:
         Returns the newly created next Task, or None for one-off tasks.
         """
         task = next((t for t in self.taskList if t.taskId == taskId), None)
-        if task is None:
+        if task is None or task.status == "complete":
             return None
 
         next_task = task.markComplete()
@@ -532,13 +535,19 @@ class User:
         Sort tasks ascending by their scheduled time attribute ("HH:MM" string).
 
         Tasks without a time value are placed at the end of the list.
-        Uses a lambda key so that "HH:MM" strings compare correctly — zero-padded
-        hour and minute mean lexicographic order matches chronological order.
+        Parses each time string to minutes-from-midnight so that non-zero-padded
+        values like "9:00" sort correctly relative to "10:00".
         """
-        return sorted(
-            tasks,
-            key=lambda t: t.time if t.time is not None else "99:99"
-        )
+        def _to_minutes(t: Task) -> int:
+            if t.time is None:
+                return 24 * 60 + 1
+            try:
+                h, m = t.time.split(":")
+                return int(h) * 60 + int(m)
+            except (ValueError, AttributeError):
+                return 24 * 60 + 1
+
+        return sorted(tasks, key=_to_minutes)
 
     def _buildReasoning(self, tasks: List[Task]) -> str:
         """Produce a human-readable explanation of why tasks were ordered this way."""

@@ -31,6 +31,32 @@ Beyond the core daily plan, PawPal+ includes several scheduling improvements bui
 - **Recurring tasks** — `Task` now accepts a `frequency` attribute (`"daily"` or `"weekly"`). When `User.completeTask()` is called, it marks the task complete and automatically appends a new pending instance to the task list with the next due date calculated via Python's `timedelta`.
 - **Conflict detection** — `DailyPlan.detectConflicts()` scans all scheduled task pairs for time-window overlaps using minutes-from-midnight arithmetic. Conflicts are stored in `plan.conflicts` and surfaced as plain-language warnings at the bottom of `getSummary()` — no crash, just visibility.
 
+## Testing PawPal+
+
+### Run the tests
+
+```bash
+python -m pytest tests/test_pawpal.py -v
+```
+
+### What the tests cover
+
+| Test | Description |
+|---|---|
+| `test_mark_complete_changes_status` | Verifies that calling `markComplete()` on a task changes its status from `"pending"` to `"complete"`. |
+| `test_add_task_increases_pet_task_count` | Confirms that adding a task via `User.addTask()` makes it retrievable and associated with the correct pet. |
+| `test_sort_by_time_returns_chronological_order` | Checks that `User._sortByTime()` returns tasks sorted in ascending order by their scheduled time (`"HH:MM"`). |
+| `test_daily_task_recurrence_creates_next_day_task` | Confirms that completing a `frequency="daily"` task automatically creates a new pending task with a due date of tomorrow and appends it to the user's task list. |
+| `test_detect_conflicts_flags_overlapping_tasks` | Verifies that `DailyPlan.detectConflicts()` returns at least one warning when two tasks share an overlapping time window. |
+
+### Confidence Level
+
+**4 / 5 stars**
+
+The core scheduling behaviors — task completion, recurrence, chronological ordering, and conflict detection — are all covered and passing. The rating stops short of 5 stars because edge cases like weekly recurrence, constraint filtering interactions, and tasks that span midnight are not yet tested. As those scenarios gain tests, confidence can move to a full 5.
+
+---
+
 ## Getting started
 
 ### Setup
