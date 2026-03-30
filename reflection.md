@@ -33,6 +33,10 @@ Classes that I included were:
 - Did your design change during implementation?
 - If yes, describe at least one change and why you made it.
 
+One of the design changes was in the user class, more specifically the generateDailyPlan method. This is because of the bottleneck that it presents. Due to workload such as sorting by priority, Fetching the pets contraints, passing that to task and much more, it becomes too much reponsibility for one method with no scheduler abstraction and one of the change implementations was breaking it down and adding helpers to it.
+
+There is also some missing logic, for example there is no link between Action and Task. Something that should be there since how will the task get done if it never goes into action. 
+
 ---
 
 ## 2. Scheduling Logic and Tradeoffs
