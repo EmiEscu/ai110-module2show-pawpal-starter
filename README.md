@@ -22,6 +22,22 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## Features
+
+- **Priority-based scheduling** — Tasks are sorted by priority (highest first) before being added to the daily plan, so the most important care activities are always scheduled first.
+- **Chronological sorting** — `Scheduler.sortByTime()` orders tasks by their `"HH:MM"` start time attribute. Tasks without a scheduled time fall to the end automatically.
+- **Clock-based start times** — The daily plan assigns real wall-clock start times to every task (beginning at 8:00 AM by default) using a running cursor that advances by each task's duration.
+- **Constraint enforcement** — Pet-level constraints (max duration, time-of-day windows) are evaluated before a task is added to the plan. Duration limits accumulate per pet across the session, so a pet with a 30-minute walk cap cannot exceed it across multiple tasks.
+- **Time-of-day filtering** — Constraints can restrict tasks to morning (6–12), afternoon (12–17), or evening (17–21) windows; tasks scheduled outside the allowed window are excluded.
+- **Conflict detection** — `DailyPlan.detectConflicts()` scans every pair of scheduled tasks for time-window overlaps using minutes-from-midnight arithmetic. Detected conflicts are stored and surfaced as plain-language warnings in the plan summary — no crash, just visibility.
+- **Daily and weekly recurrence** — Tasks can carry a `frequency` of `"daily"` or `"weekly"`. When `User.completeTask()` is called, the task is marked complete and a new pending instance with the next due date (`today + 1 day` or `today + 7 days`) is automatically appended to the task list.
+- **Task filtering** — `User.filterTasks(status, petName)` returns a focused subset of the task list. Either argument is optional; passing both applies AND logic (e.g., only pending tasks for a specific pet).
+- **Cascade deletion** — Removing a pet from a user's profile automatically removes all tasks assigned to that pet, keeping data consistent.
+- **Scheduled reasoning** — Every generated plan includes a human-readable explanation of why tasks were ordered the way they were.
+
+<a href="/course_images/ai110/productImg1.png" target="_blank"><img src='/course_images/ai110/productImg1.png' alt='Product Image 1' width=500px></a>
+<a href="/course_images/ai110/productimg2.png" target="_blank"><img src='/course_images/ai110/productimg2.png' alt='Product Image 2' width=500px></a>
+
 ## Smarter Scheduling
 
 Beyond the core daily plan, PawPal+ includes several scheduling improvements built on top of the base `DailyPlan` and `User` logic:

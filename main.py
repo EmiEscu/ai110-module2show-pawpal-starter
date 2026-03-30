@@ -1,5 +1,5 @@
 from datetime import date, time
-from pawpal_system import User, Pet, Task, DailyPlan
+from pawpal_system import User, Pet, Task, DailyPlan, Scheduler
 
 # --- Create Owner ---
 owner = User(
@@ -136,7 +136,7 @@ print("=" * 48)
 
 # --- Demonstrate _sortByTime ---
 all_tasks = owner.getTasks()
-sorted_by_time = owner._sortByTime(all_tasks)
+sorted_by_time = Scheduler(owner).sortByTime(all_tasks)
 
 print()
 print("=" * 48)

@@ -1,6 +1,6 @@
 import uuid
 import streamlit as st
-from pawpal_system import User, Pet, Task
+from pawpal_system import User, Pet, Task, Scheduler
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -139,12 +139,29 @@ if st.button("Add Task"):
         current_owner.addTask(new_task)
         st.success(f"Task **{task_title}** added.")
 
-# Display tasks from the owner object
+# Display tasks from the owner object, sorted by priority via Scheduler
 if current_owner:
     tasks = current_owner.getTasks()
     if tasks:
-        st.write("Current tasks:")
-        st.table([t.getDetails() for t in tasks])
+        scheduler = Scheduler(current_owner)
+        sorted_tasks = scheduler.sortByPriority(tasks)
+
+        _PRIORITY_LABEL = {1: "Low", 2: "Medium", 3: "High"}
+        pet_id_to_name = {p.petId: p.name for p in current_owner.getPets()}
+
+        rows = []
+        for t in sorted_tasks:
+            rows.append({
+                "Title": t.title,
+                "Pet": pet_id_to_name.get(t.assignedPetId, t.assignedPetId),
+                "Priority": _PRIORITY_LABEL.get(t.priority, str(t.priority)),
+                "Duration (min)": t.durationMin,
+                "Status": t.status.capitalize(),
+                "Due Date": str(t.dueDate) if t.dueDate else "—",
+            })
+
+        st.write("Current tasks (sorted by priority):")
+        st.dataframe(rows, use_container_width=True)
     else:
         st.info("No tasks yet. Add one above.")
 else:
@@ -164,7 +181,39 @@ if st.button("Generate Schedule"):
         st.warning("Add at least one task before generating a schedule.")
     else:
         plan = current_owner.generateDailyPlan()
-        st.success("Schedule generated!")
-        st.text(plan.getSummary())
-        with st.expander("Reasoning"):
+        pet_id_to_name = {p.petId: p.name for p in current_owner.getPets()}
+
+        # ── Conflict warnings ──────────────────────────────────────────────
+        if plan.conflicts:
+            st.error(
+                f"**{len(plan.conflicts)} scheduling conflict(s) detected.** "
+                "Review and adjust task times or durations before following this plan."
+            )
+            for raw_msg in plan.conflicts:
+                # Replace petId tokens with human-readable pet names
+                friendly = raw_msg
+                for pid, pname in pet_id_to_name.items():
+                    friendly = friendly.replace(f"pet: {pid}", f"pet: {pname}")
+                st.warning(friendly.strip())
+        else:
+            st.success(f"Schedule generated for {plan.date} — no conflicts found!")
+
+        # ── Scheduled task table ───────────────────────────────────────────
+        if plan.scheduledTasks:
+            _PRIORITY_LABEL = {1: "Low", 2: "Medium", 3: "High"}
+            schedule_rows = []
+            for task in plan.scheduledTasks:
+                start = plan.scheduledStartTimes.get(task.taskId)
+                schedule_rows.append({
+                    "Time": start.strftime("%I:%M %p") if start else "—",
+                    "Task": task.title,
+                    "Pet": pet_id_to_name.get(task.assignedPetId, task.assignedPetId),
+                    "Priority": _PRIORITY_LABEL.get(task.priority, str(task.priority)),
+                    "Duration (min)": task.durationMin,
+                })
+            st.table(schedule_rows)
+        else:
+            st.info("No tasks could be scheduled — check pet constraints.")
+
+        with st.expander("Scheduling reasoning"):
             st.text(plan.getReasoning())

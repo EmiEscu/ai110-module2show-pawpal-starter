@@ -385,6 +385,112 @@ class DailyPlan:
         return self.reasoning
 
 
+class Scheduler:
+    """Handles all scheduling logic for generating a DailyPlan from a User's data."""
+
+    def __init__(self, user: "User") -> None:
+        self.user = user
+
+    def getPendingTasks(self, targetDate: date) -> List[Task]:
+        """Return tasks that are not yet complete and are due on or before targetDate."""
+        return [
+            task for task in self.user.taskList
+            if task.status != "complete"
+            and (task.dueDate is None or task.dueDate <= targetDate)
+        ]
+
+    def applyConstraints(self, tasks: List[Task]) -> List[Task]:
+        """
+        Filter out tasks blocked by their pet's constraints.
+        Tracks accumulated scheduled minutes per pet so maxDurationMin
+        is evaluated against the running total, not just the individual task.
+        Also passes the task's projected start time so timeOfDay constraints
+        can be enforced.
+        """
+        eligible: List[Task] = []
+        pet_accumulated: Dict[str, int] = {}
+        cursor_min = PLAN_START_HOUR * 60
+
+        for task in tasks:
+            pet = self.user.getPetById(task.assignedPetId)
+            start_h, start_m = divmod(cursor_min, 60)
+            scheduled_time = time(start_h % 24, start_m)
+
+            if pet is None:
+                eligible.append(task)
+                cursor_min += task.durationMin
+                continue
+
+            accumulated = pet_accumulated.get(task.assignedPetId, 0)
+            blocked = any(
+                c.isApplicable(task, accumulated_min=accumulated, scheduled_time=scheduled_time)
+                for c in pet.constraints
+            )
+            if not blocked:
+                eligible.append(task)
+                pet_accumulated[task.assignedPetId] = accumulated + task.durationMin
+                cursor_min += task.durationMin
+
+        return eligible
+
+    def sortByPriority(self, tasks: List[Task]) -> List[Task]:
+        """Sort tasks descending by priority (higher number = scheduled first)."""
+        return sorted(tasks, key=lambda t: t.priority, reverse=True)
+
+    def sortByTime(self, tasks: List[Task]) -> List[Task]:
+        """
+        Sort tasks ascending by their scheduled time attribute ("HH:MM" string).
+        Tasks without a time value are placed at the end of the list.
+        """
+        def _to_minutes(t: Task) -> int:
+            if t.time is None:
+                return 24 * 60 + 1
+            try:
+                h, m = t.time.split(":")
+                return int(h) * 60 + int(m)
+            except (ValueError, AttributeError):
+                return 24 * 60 + 1
+
+        return sorted(tasks, key=_to_minutes)
+
+    def buildReasoning(self, tasks: List[Task]) -> str:
+        """Produce a human-readable explanation of why tasks were ordered this way."""
+        if not tasks:
+            return "No tasks scheduled for today."
+        lines = ["Tasks ordered by priority (highest first):"]
+        for i, task in enumerate(tasks, 1):
+            pet = self.user.getPetById(task.assignedPetId)
+            pet_label = pet.name if pet else task.assignedPetId
+            lines.append(
+                f"  {i}. [Priority {task.priority}] {task.title} "
+                f"for {pet_label} ({task.durationMin} min)"
+            )
+        return "\n".join(lines)
+
+    def generateDailyPlan(self) -> DailyPlan:
+        """
+        Generate a DailyPlan for today by:
+          1. Collecting pending tasks due today or earlier
+          2. Sorting by priority so high-priority tasks are evaluated first
+          3. Filtering out tasks blocked by pet constraints (with time + duration context)
+          4. Building the plan with real clock-based start times
+          5. Recording reasoning for the final order
+        """
+        today = date.today()
+        plan = DailyPlan(today, self.user.userId)
+
+        pending = self.getPendingTasks(today)
+        sorted_pending = self.sortByPriority(pending)
+        eligible = self.applyConstraints(sorted_pending)
+
+        for task in eligible:
+            plan.addTask(task)
+
+        plan.reasoning = self.buildReasoning(eligible)
+        plan.conflicts = plan.detectConflicts()
+        return plan
+
+
 class User:
     """Central class representing a PawPal+ user."""
 
@@ -480,108 +586,6 @@ class User:
 
         return results
 
-    # --- Private scheduling helpers ---
-
-    def _getPendingTasks(self, targetDate: date) -> List[Task]:
-        """Return tasks that are not yet complete and are due on or before targetDate."""
-        return [
-            task for task in self.taskList
-            if task.status != "complete"
-            and (task.dueDate is None or task.dueDate <= targetDate)
-        ]
-
-    def _applyConstraints(self, tasks: List[Task]) -> List[Task]:
-        """
-        Filter out tasks blocked by their pet's constraints.
-        Tracks accumulated scheduled minutes per pet so maxDurationMin
-        is evaluated against the running total, not just the individual task.
-        Also passes the task's projected start time so timeOfDay constraints
-        can be enforced.
-        """
-        eligible: List[Task] = []
-        pet_accumulated: Dict[str, int] = {}  # petId -> total minutes already scheduled
-
-        # Compute the projected start time for the next task based on cursor.
-        cursor_min = PLAN_START_HOUR * 60
-
-        for task in tasks:
-            pet = self.getPetById(task.assignedPetId)
-            start_h, start_m = divmod(cursor_min, 60)
-            scheduled_time = time(start_h % 24, start_m)
-
-            if pet is None:
-                eligible.append(task)
-                cursor_min += task.durationMin
-                continue
-
-            accumulated = pet_accumulated.get(task.assignedPetId, 0)
-            blocked = any(
-                c.isApplicable(task, accumulated_min=accumulated, scheduled_time=scheduled_time)
-                for c in pet.constraints
-            )
-            if not blocked:
-                eligible.append(task)
-                pet_accumulated[task.assignedPetId] = accumulated + task.durationMin
-                cursor_min += task.durationMin
-
-        return eligible
-
-    def _sortByPriority(self, tasks: List[Task]) -> List[Task]:
-        """Sort tasks descending by priority (higher number = scheduled first)."""
-        return sorted(tasks, key=lambda t: t.priority, reverse=True)
-
-    def _sortByTime(self, tasks: List[Task]) -> List[Task]:
-        """
-        Sort tasks ascending by their scheduled time attribute ("HH:MM" string).
-
-        Tasks without a time value are placed at the end of the list.
-        Parses each time string to minutes-from-midnight so that non-zero-padded
-        values like "9:00" sort correctly relative to "10:00".
-        """
-        def _to_minutes(t: Task) -> int:
-            if t.time is None:
-                return 24 * 60 + 1
-            try:
-                h, m = t.time.split(":")
-                return int(h) * 60 + int(m)
-            except (ValueError, AttributeError):
-                return 24 * 60 + 1
-
-        return sorted(tasks, key=_to_minutes)
-
-    def _buildReasoning(self, tasks: List[Task]) -> str:
-        """Produce a human-readable explanation of why tasks were ordered this way."""
-        if not tasks:
-            return "No tasks scheduled for today."
-        lines = ["Tasks ordered by priority (highest first):"]
-        for i, task in enumerate(tasks, 1):
-            pet = self.getPetById(task.assignedPetId)
-            pet_label = pet.name if pet else task.assignedPetId
-            lines.append(
-                f"  {i}. [Priority {task.priority}] {task.title} "
-                f"for {pet_label} ({task.durationMin} min)"
-            )
-        return "\n".join(lines)
-
     def generateDailyPlan(self) -> DailyPlan:
-        """
-        Generate a DailyPlan for today by:
-          1. Collecting pending tasks due today or earlier
-          2. Sorting by priority so high-priority tasks are evaluated first
-          3. Filtering out tasks blocked by pet constraints (with time + duration context)
-          4. Building the plan with real clock-based start times
-          5. Recording reasoning for the final order
-        """
-        today = date.today()
-        plan = DailyPlan(today, self.userId)
-
-        pending = self._getPendingTasks(today)
-        sorted_pending = self._sortByPriority(pending)   # sort before constraint pass
-        eligible = self._applyConstraints(sorted_pending)
-
-        for task in eligible:
-            plan.addTask(task)
-
-        plan.reasoning = self._buildReasoning(eligible)
-        plan.conflicts = plan.detectConflicts()
-        return plan
+        """Delegate to Scheduler to generate today's DailyPlan."""
+        return Scheduler(self).generateDailyPlan()

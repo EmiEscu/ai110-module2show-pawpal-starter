@@ -1,0 +1,129 @@
+classDiagram
+    class User {
+        -String userId
+        -String name
+        -String email
+        -String phone
+        -List~Pet~ pets
+        -List~Task~ taskList
+        +addPet(pet: Pet) void
+        +removePet(petId: String) void
+        +getPets() List~Pet~
+        +addTask(task: Task) void
+        +removeTask(taskId: String) void
+        +completeTask(taskId: String) Optional~Task~
+        +getTasks() List~Task~
+        +getPetById(petId: String) Optional~Pet~
+        +filterTasks(status: String, petName: String) List~Task~
+        +generateDailyPlan() DailyPlan
+    }
+
+    class Pet {
+        -String petId
+        -String name
+        -int age
+        -String gender
+        -String breed
+        -bool isAble
+        -String groomingNeeds
+        -List~String~ medications
+        -List~Constraint~ constraints
+        -List~Action~ actions
+        +addInfo(kwargs) void
+        +updateInfo(kwargs) void
+        +removeInfo(field: String) void
+        +addMedication(med: String) void
+        +removeMedication(med: String) void
+        +addAction(action: Action) void
+        +removeAction(actionId: String) void
+        +getActions() List~Action~
+        +addConstraint(constraint: Constraint) void
+        +getConstraints() List~Constraint~
+    }
+
+    class Action {
+        -String actionId
+        -String petId
+        -String serviceName
+        -String serviceType
+        -float cost
+        -String frequency
+        -Date startDate
+        -Optional~Date~ endDate
+        -String status
+        +activate() void
+        +cancel() void
+        +renew() void
+        +updateStatus(status: String) void
+        +isActive() bool
+        +isDueToday(targetDate: Date) bool
+    }
+
+    class Constraint {
+        -String constraintId
+        -String petId
+        -String constraintType
+        -String description
+        -int priority
+        -Optional~int~ maxDurationMin
+        -Optional~String~ timeOfDay
+        +updateConstraint(kwargs) void
+        +getPriority() int
+        +isApplicable(task: Task, accumulated_min: int, scheduled_time: String) bool
+    }
+
+    class Task {
+        -String taskId
+        -String title
+        -String category
+        -int durationMin
+        -int priority
+        -String status
+        -String assignedPetId
+        -Optional~Date~ dueDate
+        -Optional~String~ time
+        -Optional~String~ frequency
+        +markComplete() Optional~Task~
+        +updatePriority(priority: int) void
+        +updateDuration(durationMin: int) void
+        +assignToPet(petId: String) void
+        +getDetails() dict
+    }
+
+    class DailyPlan {
+        -Date date
+        -String userId
+        -List~Task~ scheduledTasks
+        -Dict~String, Time~ scheduledStartTimes
+        -int totalDurationMin
+        -String reasoning
+        -List~String~ conflicts
+        +addTask(task: Task) void
+        +removeTask(taskId: String) void
+        +reorder() void
+        +detectConflicts() List~String~
+        +getSummary() String
+        +getReasoning() String
+    }
+
+    class Scheduler {
+        -User user
+        +getPendingTasks(targetDate: Date) List~Task~
+        +applyConstraints(tasks: List~Task~) List~Task~
+        +sortByPriority(tasks: List~Task~) List~Task~
+        +sortByTime(tasks: List~Task~) List~Task~
+        +buildReasoning(tasks: List~Task~) String
+        +generateDailyPlan() DailyPlan
+    }
+
+    User "1" *-- "0..*" Pet : owns
+    User "1" *-- "0..*" Task : manages
+    User "1" ..> "0..*" Scheduler : instantiates
+    Pet "1" *-- "0..*" Action : has
+    Pet "1" *-- "0..*" Constraint : has
+    Task "0..*" --> "1" Pet : assigned to
+    Scheduler "1" --> "1" User : references
+    Scheduler "1" ..> "0..*" DailyPlan : creates
+    Scheduler "1" ..> "0..*" Constraint : applies
+    DailyPlan "1" o-- "0..*" Task : schedules
+

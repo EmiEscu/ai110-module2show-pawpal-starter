@@ -3,7 +3,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from datetime import date, timedelta, time
-from pawpal_system import Task, Pet, User, DailyPlan
+from pawpal_system import Task, Pet, User, DailyPlan, Scheduler
 
 
 def test_mark_complete_changes_status():
@@ -61,7 +61,7 @@ def test_sort_by_time_returns_chronological_order():
              priority=3, status="pending", assignedPetId="p1", dueDate=None, time="12:30"),
     ]
 
-    sorted_tasks = user._sortByTime(tasks)
+    sorted_tasks = Scheduler(user).sortByTime(tasks)
 
     assert sorted_tasks[0].time == "08:00"
     assert sorted_tasks[1].time == "12:30"

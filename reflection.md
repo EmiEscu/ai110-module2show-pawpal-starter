@@ -63,12 +63,15 @@ One tradeoff that the scheduler makes is the Priority. When something has high p
 
 - How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
 - What kinds of prompts or questions were most helpful?
+I used ai tools during this project for a lot of things, specially since i was doing this project close to the deadline. I used it to design the UML diagram, brainstorm diffent functions for the classes, debugging and refactoring when I would make implementations or adding classes such as the schedular class close to the end. I would also use AI to help with the heavy lifting such as initiating the skeleton for all the classes. The prompts i would use are the ones given to us in the assignment, but I think that the reason why that worked so well for me was because I made sure to specify on the CLAUDE file lots of context about the project. I would also ask questions to claude of how the classes worked together and the purpose for some of the changes.
+
+The most helpful kinds of prompts or questions where prompts that were broken down for the specific task. Rather then telling claude to build all the classes or check what was wrong with the code, I would pin down a class and ask it to explain what was going on and identify any potential issues the code had with its logic and algorithm. 
 
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
 - How did you evaluate or verify what the AI suggested?
-
+One of the things was the way the AI was making the scheduleer, for some reason it was making super complex logic that made no sense. I told the AI to go back and simplify the logic and explain the changes it made and why. 
 ---
 
 ## 4. Testing and Verification
@@ -77,12 +80,13 @@ One tradeoff that the scheduler makes is the Priority. When something has high p
 
 - What behaviors did you test?
 - Why were these tests important?
+I ran the program multiple times and tested it myself. Although it had passed all the test given, I still wanted to make sure that there was no program crashing code in the files. I think it was important to test how it generated the shedule because if something like the priority ranking was incorrect, there would be no reason to use that system.
 
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
 - What edge cases would you test next if you had more time?
-
+I really am not too confident on my scheduler working correctly. I ran it a couple of times and found some edge cases and issues. The first thing I disliked was the layout. For being a small application (layout wise), it used a vertical format which took too much space. I would have group the login, and pet section together, and below that added the task and generator. Also another issue was that there was no way to remove the pets, the date due wasnt set properly, there was also no way of editing any of the information or updating info for the user, and more little edge cases that if I had more time I would address.
 ---
 
 ## 5. Reflection
@@ -90,11 +94,14 @@ One tradeoff that the scheduler makes is the Priority. When something has high p
 **a. What went well**
 
 - What part of this project are you most satisfied with?
+I think that the part of the project I was most satisfied with was the generation system. I think that the AI did a good job in that field and was able to create a calendar/schedule which was effective and clean.
 
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
+I would improve pretty much everything if I had another shot at this. First I would start with the design of the website, I would take more time setting up the UML diagram and making sure that all the functions and attributes as well as relationships make sense and are not just there. I would also break the classes down a bit more to reduce the complexity of everything and not have huge classes. 
 
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+AI is only as powerful as the fundational knowledge you have. I made the mistake of leaving this project till the final minute, so i wasnt able to truly understand what was going on, or spend time actually reviewing the AI and questioning why it made the changes it did or why it wrote why it did.
