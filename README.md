@@ -22,6 +22,15 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## Smarter Scheduling
+
+Beyond the core daily plan, PawPal+ includes several scheduling improvements built on top of the base `DailyPlan` and `User` logic:
+
+- **Sort by time** — `User._sortByTime()` orders any list of tasks chronologically using their `"HH:MM"` string attribute as a lambda key. Tasks with no time set fall to the end automatically.
+- **Filter tasks** — `User.filterTasks(status, petName)` returns a focused subset of the task list. Either argument is optional; passing both applies AND logic (e.g. pending tasks for a specific pet only).
+- **Recurring tasks** — `Task` now accepts a `frequency` attribute (`"daily"` or `"weekly"`). When `User.completeTask()` is called, it marks the task complete and automatically appends a new pending instance to the task list with the next due date calculated via Python's `timedelta`.
+- **Conflict detection** — `DailyPlan.detectConflicts()` scans all scheduled task pairs for time-window overlaps using minutes-from-midnight arithmetic. Conflicts are stored in `plan.conflicts` and surfaced as plain-language warnings at the bottom of `getSummary()` — no crash, just visibility.
+
 ## Getting started
 
 ### Setup

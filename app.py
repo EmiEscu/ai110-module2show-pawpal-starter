@@ -1,53 +1,105 @@
+import uuid
 import streamlit as st
+from pawpal_system import User, Pet, Task
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
 st.title("🐾 PawPal+")
 
-st.markdown(
-    """
-Welcome to the PawPal+ starter app.
+# ---------------------------------------------------------------------------
+# Owner vault — persists User instances across Streamlit re-runs within the
+# same browser session.  Keyed by owner name so returning users resume their
+# existing object instead of getting a blank one.
+# ---------------------------------------------------------------------------
+if "owner_vault" not in st.session_state:
+    st.session_state.owner_vault = {}   # { owner_name: User }
 
-This file is intentionally thin. It gives you a working Streamlit app so you can start quickly,
-but **it does not implement the project logic**. Your job is to design the system and build it.
+if "current_owner_key" not in st.session_state:
+    st.session_state.current_owner_key = None
 
-Use this app as your interactive demo once your backend classes/functions exist.
-"""
+
+def get_or_create_owner(name: str, email: str, phone: str) -> User:
+    """Return the existing User from the vault, or create and store a new one."""
+    vault = st.session_state.owner_vault
+    if name in vault:
+        return vault[name]
+    new_owner = User(userId=str(uuid.uuid4()), name=name, email=email, phone=phone)
+    vault[name] = new_owner
+    return new_owner
+
+
+# ---------------------------------------------------------------------------
+# Owner / pet setup
+# ---------------------------------------------------------------------------
+st.subheader("Owner Profile")
+
+col_a, col_b = st.columns(2)
+with col_a:
+    owner_name = st.text_input("Owner name", value="Jordan")
+with col_b:
+    owner_email = st.text_input("Email", value="jordan@example.com")
+
+owner_phone = st.text_input("Phone", value="555-0100")
+
+if st.button("Load / Create Profile"):
+    owner = get_or_create_owner(owner_name, owner_email, owner_phone)
+    st.session_state.current_owner_key = owner_name
+    if len(owner.getPets()) == 0:
+        # First time — seed the pet from the inputs below (collected after this block,
+        # so we use defaults here; user can update via the pet section).
+        st.info(f"New profile created for **{owner_name}**. Add a pet below.")
+    else:
+        st.success(
+            f"Welcome back, **{owner.name}**! "
+            f"Loaded {len(owner.getPets())} pet(s) and {len(owner.getTasks())} task(s)."
+        )
+
+# Resolve active owner (None if profile has not been loaded yet)
+current_owner: User | None = (
+    st.session_state.owner_vault.get(st.session_state.current_owner_key)
+    if st.session_state.current_owner_key
+    else None
 )
-
-with st.expander("Scenario", expanded=True):
-    st.markdown(
-        """
-**PawPal+** is a pet care planning assistant. It helps a pet owner plan care tasks
-for their pet(s) based on constraints like time, priority, and preferences.
-
-You will design and implement the scheduling logic and connect it to this Streamlit UI.
-"""
-    )
-
-with st.expander("What you need to build", expanded=True):
-    st.markdown(
-        """
-At minimum, your system should:
-- Represent pet care tasks (what needs to happen, how long it takes, priority)
-- Represent the pet and the owner (basic info and preferences)
-- Build a plan/schedule for a day that chooses and orders tasks based on constraints
-- Explain the plan (why each task was chosen and when it happens)
-"""
-    )
 
 st.divider()
 
-st.subheader("Quick Demo Inputs (UI only)")
-owner_name = st.text_input("Owner name", value="Jordan")
+# ---------------------------------------------------------------------------
+# Pet setup (only shown once an owner profile is active)
+# ---------------------------------------------------------------------------
+st.subheader("Pet Info")
+
 pet_name = st.text_input("Pet name", value="Mochi")
-species = st.selectbox("Species", ["dog", "cat", "other"])
+species   = st.selectbox("Species", ["dog", "cat", "other"])
 
-st.markdown("### Tasks")
-st.caption("Add a few tasks. In your final version, these should feed into your scheduler.")
+if st.button("Add Pet") and current_owner is not None:
+    existing_names = {p.name for p in current_owner.getPets()}
+    if pet_name in existing_names:
+        st.warning(f"**{pet_name}** is already registered to {current_owner.name}.")
+    else:
+        new_pet = Pet(
+            petId=str(uuid.uuid4()),
+            name=pet_name,
+            age=0,
+            gender="unknown",
+            breed=species,
+            isAble=True,
+            groomingNeeds="standard",
+        )
+        current_owner.addPet(new_pet)
+        st.success(f"Added **{pet_name}** to {current_owner.name}'s profile.")
+elif st.session_state.current_owner_key is None:
+    st.caption("Load a profile first to add pets.")
 
-if "tasks" not in st.session_state:
-    st.session_state.tasks = []
+if current_owner and current_owner.getPets():
+    st.write("Registered pets:", ", ".join(p.name for p in current_owner.getPets()))
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Task management
+# ---------------------------------------------------------------------------
+st.subheader("Tasks")
+st.caption("Tasks are stored on the owner object and survive Streamlit re-runs.")
 
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -57,32 +109,62 @@ with col2:
 with col3:
     priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
 
-if st.button("Add task"):
-    st.session_state.tasks.append(
-        {"title": task_title, "duration_minutes": int(duration), "priority": priority}
-    )
+_PRIORITY_MAP = {"low": 1, "medium": 2, "high": 3}
 
-if st.session_state.tasks:
-    st.write("Current tasks:")
-    st.table(st.session_state.tasks)
+# Pet selector for task assignment
+pet_options = (
+    {p.name: p.petId for p in current_owner.getPets()} if current_owner else {}
+)
+assigned_pet_label = st.selectbox(
+    "Assign to pet",
+    options=list(pet_options.keys()) if pet_options else ["(load a profile first)"],
+)
+
+if st.button("Add Task"):
+    if current_owner is None:
+        st.warning("Load a profile before adding tasks.")
+    elif not pet_options:
+        st.warning("Add a pet before adding tasks.")
+    else:
+        new_task = Task(
+            taskId=str(uuid.uuid4()),
+            title=task_title,
+            category="general",
+            durationMin=int(duration),
+            priority=_PRIORITY_MAP[priority],
+            status="pending",
+            assignedPetId=pet_options[assigned_pet_label],
+            dueDate=None,
+        )
+        current_owner.addTask(new_task)
+        st.success(f"Task **{task_title}** added.")
+
+# Display tasks from the owner object
+if current_owner:
+    tasks = current_owner.getTasks()
+    if tasks:
+        st.write("Current tasks:")
+        st.table([t.getDetails() for t in tasks])
+    else:
+        st.info("No tasks yet. Add one above.")
 else:
-    st.info("No tasks yet. Add one above.")
+    st.info("Load a profile to see tasks.")
 
 st.divider()
 
+# ---------------------------------------------------------------------------
+# Schedule generation
+# ---------------------------------------------------------------------------
 st.subheader("Build Schedule")
-st.caption("This button should call your scheduling logic once you implement it.")
 
-if st.button("Generate schedule"):
-    st.warning(
-        "Not implemented yet. Next step: create your scheduling logic (classes/functions) and call it here."
-    )
-    st.markdown(
-        """
-Suggested approach:
-1. Design your UML (draft).
-2. Create class stubs (no logic).
-3. Implement scheduling behavior.
-4. Connect your scheduler here and display results.
-"""
-    )
+if st.button("Generate Schedule"):
+    if current_owner is None:
+        st.warning("Load a profile first.")
+    elif not current_owner.getTasks():
+        st.warning("Add at least one task before generating a schedule.")
+    else:
+        plan = current_owner.generateDailyPlan()
+        st.success("Schedule generated!")
+        st.text(plan.getSummary())
+        with st.expander("Reasoning"):
+            st.text(plan.getReasoning())

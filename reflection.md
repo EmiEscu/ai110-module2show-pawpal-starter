@@ -45,11 +45,15 @@ There is also some missing logic, for example there is no link between Action an
 
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
 - How did you decide which constraints mattered most?
+The schedulers considers many different constraints, for example, priority, max duration per pet, time of day, conflict detection and the due date.
+
+The priority came to what matters the most to the pet. If something is more urgent or critical that will take priority consern over other factors. 
 
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
+One tradeoff that the scheduler makes is the Priority. When something has high priority it pushes everything back no matter the time in the day. This is important because for a new pet owner, the cost of accidentally skipping a medication or feeding because the optimizer rearranged things is much worse than occassionally losing a grooming slot due to a window mismatch.
 
 ---
 

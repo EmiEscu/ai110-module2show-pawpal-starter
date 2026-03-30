@@ -1,4 +1,5 @@
-from datetime import date, time
+import uuid
+from datetime import date, time, timedelta
 from typing import Dict, List, Optional
 
 
@@ -97,6 +98,8 @@ class Task:
         status: str,
         assignedPetId: str,
         dueDate: Optional[date],
+        time: Optional[str] = None,
+        frequency: Optional[str] = None,
     ) -> None:
         self.taskId = taskId
         self.title = title
@@ -106,9 +109,45 @@ class Task:
         self.status = status
         self.assignedPetId = assignedPetId
         self.dueDate = dueDate
+        self.time = time        # Scheduled start time as "HH:MM" string (e.g. "08:30")
+        self.frequency = frequency  # Recurrence cadence: "daily", "weekly", or None
 
-    def markComplete(self) -> None:
+    def markComplete(self) -> Optional["Task"]:
+        """
+        Mark this task complete and, if it is recurring, return a new Task
+        instance representing the next occurrence.
+
+        Recurrence rules:
+          - "daily"  → next due date is today + 1 day
+          - "weekly" → next due date is today + 7 days
+
+        Returns the next Task if recurring, otherwise None.
+        The caller is responsible for registering the returned task
+        (e.g. via User.completeTask).
+        """
         self.status = "complete"
+
+        _FREQUENCY_DELTAS = {
+            "daily": timedelta(days=1),
+            "weekly": timedelta(weeks=1),
+        }
+
+        delta = _FREQUENCY_DELTAS.get(self.frequency.lower() if self.frequency else "")
+        if delta is None:
+            return None
+
+        return Task(
+            taskId=str(uuid.uuid4()),
+            title=self.title,
+            category=self.category,
+            durationMin=self.durationMin,
+            priority=self.priority,
+            status="pending",
+            assignedPetId=self.assignedPetId,
+            dueDate=date.today() + delta,
+            time=self.time,
+            frequency=self.frequency,
+        )
 
     def updatePriority(self, priority: int) -> None:
         self.priority = priority
@@ -129,6 +168,8 @@ class Task:
             "status": self.status,
             "assignedPetId": self.assignedPetId,
             "dueDate": self.dueDate,
+            "time": self.time,
+            "frequency": self.frequency,
         }
 
 
@@ -256,6 +297,7 @@ class DailyPlan:
         self.scheduledStartTimes: Dict[str, time] = {}  # taskId -> clock start time
         self.totalDurationMin: int = 0
         self.reasoning: str = ""
+        self.conflicts: List[str] = []  # Populated by detectConflicts()
         self._cursorMin: int = PLAN_START_HOUR * 60  # running clock in minutes from midnight
 
     def addTask(self, task: Task) -> None:
@@ -280,6 +322,49 @@ class DailyPlan:
             cursor += task.durationMin
         self._cursorMin = cursor
 
+    def detectConflicts(self) -> List[str]:
+        """
+        Scan all scheduled task pairs for time-window overlaps and return a
+        list of warning strings — one per conflicting pair.
+
+        Two tasks conflict when their windows overlap:
+            [startA, startA + durationA)  intersects  [startB, startB + durationB)
+
+        Uses minutes-from-midnight arithmetic so time objects can be compared
+        numerically. Returns an empty list when no conflicts are found.
+        """
+        warnings: List[str] = []
+        tasks = self.scheduledTasks
+
+        for i in range(len(tasks)):
+            for j in range(i + 1, len(tasks)):
+                a = tasks[i]
+                b = tasks[j]
+
+                start_a = self.scheduledStartTimes.get(a.taskId)
+                start_b = self.scheduledStartTimes.get(b.taskId)
+
+                if start_a is None or start_b is None:
+                    continue
+
+                # Convert time objects to minutes from midnight for arithmetic
+                a_start_min = start_a.hour * 60 + start_a.minute
+                b_start_min = start_b.hour * 60 + start_b.minute
+                a_end_min = a_start_min + a.durationMin
+                b_end_min = b_start_min + b.durationMin
+
+                # Overlap: A starts before B ends AND B starts before A ends
+                if a_start_min < b_end_min and b_start_min < a_end_min:
+                    warnings.append(
+                        f"  WARNING: '{a.title}' (pet: {a.assignedPetId}, "
+                        f"{start_a.strftime('%I:%M %p')}, {a.durationMin} min) "
+                        f"overlaps with '{b.title}' "
+                        f"(pet: {b.assignedPetId}, "
+                        f"{start_b.strftime('%I:%M %p')}, {b.durationMin} min)."
+                    )
+
+        return warnings
+
     def getSummary(self) -> str:
         if not self.scheduledTasks:
             return f"No tasks scheduled for {self.date}."
@@ -288,6 +373,9 @@ class DailyPlan:
             start = self.scheduledStartTimes.get(task.taskId)
             start_str = start.strftime("%I:%M %p") if start else "?"
             lines.append(f"  {start_str}  {task.title} ({task.durationMin} min)")
+        if self.conflicts:
+            lines.append("\n--- Conflict Warnings ---")
+            lines.extend(self.conflicts)
         return "\n".join(lines)
 
     def getReasoning(self) -> str:
@@ -328,6 +416,25 @@ class User:
     def removeTask(self, taskId: str) -> None:
         self.taskList = [t for t in self.taskList if t.taskId != taskId]
 
+    def completeTask(self, taskId: str) -> Optional[Task]:
+        """
+        Mark a task complete and automatically schedule its next occurrence
+        if the task has a "daily" or "weekly" frequency.
+
+        The next Task instance (if any) is appended to taskList so it is
+        included in future daily plans without any extra caller work.
+
+        Returns the newly created next Task, or None for one-off tasks.
+        """
+        task = next((t for t in self.taskList if t.taskId == taskId), None)
+        if task is None:
+            return None
+
+        next_task = task.markComplete()
+        if next_task is not None:
+            self.taskList.append(next_task)
+        return next_task
+
     def getTasks(self) -> List[Task]:
         return list(self.taskList)
 
@@ -337,6 +444,38 @@ class User:
             if pet.petId == petId:
                 return pet
         return None
+
+    def filterTasks(
+        self,
+        status: Optional[str] = None,
+        petName: Optional[str] = None,
+    ) -> List[Task]:
+        """
+        Return a filtered subset of the user's task list.
+
+        Args:
+            status:  If provided, only tasks whose status matches this value
+                     are returned (e.g. "complete" or "pending").
+            petName: If provided, only tasks assigned to the pet with this name
+                     are returned. The match is case-insensitive.
+
+        Either argument may be omitted to skip that filter; passing both applies
+        both filters together (AND logic).
+        """
+        results = list(self.taskList)
+
+        if status is not None:
+            results = [t for t in results if t.status == status]
+
+        if petName is not None:
+            matched_ids = {
+                pet.petId
+                for pet in self.pets
+                if pet.name.lower() == petName.lower()
+            }
+            results = [t for t in results if t.assignedPetId in matched_ids]
+
+        return results
 
     # --- Private scheduling helpers ---
 
@@ -388,6 +527,19 @@ class User:
         """Sort tasks descending by priority (higher number = scheduled first)."""
         return sorted(tasks, key=lambda t: t.priority, reverse=True)
 
+    def _sortByTime(self, tasks: List[Task]) -> List[Task]:
+        """
+        Sort tasks ascending by their scheduled time attribute ("HH:MM" string).
+
+        Tasks without a time value are placed at the end of the list.
+        Uses a lambda key so that "HH:MM" strings compare correctly — zero-padded
+        hour and minute mean lexicographic order matches chronological order.
+        """
+        return sorted(
+            tasks,
+            key=lambda t: t.time if t.time is not None else "99:99"
+        )
+
     def _buildReasoning(self, tasks: List[Task]) -> str:
         """Produce a human-readable explanation of why tasks were ordered this way."""
         if not tasks:
@@ -422,4 +574,5 @@ class User:
             plan.addTask(task)
 
         plan.reasoning = self._buildReasoning(eligible)
+        plan.conflicts = plan.detectConflicts()
         return plan
